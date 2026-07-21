@@ -12,9 +12,16 @@ import httpx
 
 logging.basicConfig(level=logging.INFO)
 
-BOT_TOKEN = os.environ["BOT_TOKEN"]
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
+# Читаем токены из файла .env
+from dotenv import load_dotenv
+load_dotenv()
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+
+if not BOT_TOKEN or not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+    raise Exception("Ошибка: проверь файл .env — не хватает переменных!")
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
