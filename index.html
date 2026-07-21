@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Памир 2026 — микроблог путешествия</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox/dist/css/glightbox.min.css">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #f5f5f7; font-family: Inter, sans-serif; display: flex; height: 100vh; overflow: hidden; }
+#map { width: 60%; height: 100vh; flex-shrink: 0; }
+#resizer { width: 6px; cursor: col-resize; background: #e5e5e5; flex-shrink: 0; }
+#resizer:hover, #resizer.active { background: #ff00dd; }
+#feed { flex: 1; padding: 6px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; height: 100vh; }
+.post-card { background: #fff; border: 1px solid #e5e5e5; padding: 8px 10px; cursor: pointer; display: flex; }
+.post-card:hover { border-color: #cfcfcf; transform: translateY(-1px); }
+.post-content { flex: 1; overflow: hidden; }
+.post-meta { font-size: 12px; color: #8e8e93; margin-bottom: 4px; display: flex; gap: 8px; }
+.post-text { font-size: 14px; line-height: 1.4; color: #111; }
+.post-text p { margin: 0; }
+.post-text img { display: none; }
+.post-thumb { flex-shrink: 0; margin-left: 10px; }
+.post-thumb img { width: 60px; height: 60px; object-fit: cover; }
+@media (max-width: 768px) {
+  body { flex-direction: column; }
+  #map { width: 100% !important; height: 50vh; }
+  #resizer { display: none; }
+  #feed { width: 100%; height: 50vh; }
+}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="resizer"></div>
+<div id="feed"><div style="padding:20px;text-align:center;color:#999;">Загрузка...</div></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/glightbox/dist/js/glightbox.min.js"></script>
+<script>
+// ⚠️ СЮДА ВСТАВИТЬ СВОИ КЛЮЧИ СУПАБЕЙС (ЗАМЕНИТЬ В КАВЫЧКАХ) ⚠️
+const SUPABASE_URL = "https://kvlybnqrzubxmcmgmuaa.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2bHlibnFyenVieG1jbWdtdWFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1ODc2MTYsImV4cCI6MjEwMDE2MzYxNn0.E5XqLVc_CJJoKWUt3E1SFEny4tQ1CiLXwrulWk1X6R4";
+
+const map = L.map('map').setView([39.5, 73], 9);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+  attribution: '&copy; Esri', maxZoom: 18
+}).addTo(map);
+
+let markers = [];
+
+function loadPosts() {
+  fetch(`${SUPABASE_URL}/rest/v1/posts?order=created_at.desc`, {
+    headers: { apikey: SUPABASE_ANON_KEY }
+  })
+  .then(r => r.json())
+  .then(posts => {
+    const feed = document.getElementById('feed');
+    feed.innerHTML = '';
+    markers.forEach(m => map.removeLayer(m));
+    markers = [];
+    
+    if (posts.length === 0) {
+      feed.innerHTML = '<div style="padding:20px;text-align:center;color:#999;">Пока нет постов. Напиши боту в Telegram!</div>';
+      return;
+    }
+    
+    posts.forEach((post, idx) => {
+      const card = document.createElement('div');
+      card.className = 'post-card';
+      let imagesHtml = '', thumbHtml = '';
+      if (post.image_urls && post.image_urls.length > 0) {
+        imagesHtml = post.image_urls.map(url => `<a href="${url}" class="glightbox"><img src="${url}"></a>`).join('');
+        thumbHtml = `<img src="${post.image_urls[0]}">`;
+      }
+      const date = post.local_time_str || new Date(post.created_at).toLocaleDateString('ru-RU', { day:'numeric', month:'long', hour:'2-digit', minute:'2-digit' });
+      card.innerHTML = `<div class="post-content"><div class="post-meta"><span>${date}</span></div><div class="post-text"><p>${post.text.replace(/\n/g, '<br>')}</p>${imagesHtml}</div></div><div class="post-thumb">${thumbHtml}</div>`;
+      feed.appendChild(card);
+      
+      if (post.lat && post.lng) {
+        const marker = L.circleMarker([post.lat, post.lng], { radius: 6, fillColor: '#ff00dd', color: '#fff', weight: 1, fillOpacity: 0.8 }).addTo(map);
+        marker.on('click', () => { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+        card.addEventListener('click', () => { map.flyTo([post.lat, post.lng], Math.max(map.getZoom(), 12), { duration: 0.5 }); });
+        markers.push(marker);
+      }
+    });
+    
+    if (posts.some(p => p.lat && p.lng)) {
+      const coords = posts.filter(p => p.lat && p.lng).map(p => [p.lat, p.lng]);
+      map.fitBounds(coords, { padding: [30, 30] });
+    }
+  });
+}
+
+loadPosts();
+
+const resizer = document.getElementById('resizer');
+const mapEl = document.getElementById('map');
+let isResizing = false;
+resizer.addEventListener('mousedown', () => { isResizing = true; document.body.style.userSelect = 'none'; });
+document.addEventListener('mousemove', (e) => {
+  if (!isResizing) return;
+  let w = (e.clientX / window.innerWidth) * 100;
+  if (w < 15) w = 15; if (w > 85) w = 85;
+  mapEl.style.width = w + '%';
+  map.invalidateSize();
+});
+document.addEventListener('mouseup', () => { isResizing = false; document.body.style.userSelect = ''; });
+</script>
+</body>
+</html>
